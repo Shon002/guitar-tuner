@@ -31,7 +31,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
-button, select { font: inherit; color: inherit; }
+button { font: inherit; color: inherit; }
 button { cursor: pointer; }
 [hidden] { display: none !important; }
 body[data-mode="strings"] [data-only="chromatic"],
@@ -91,23 +91,64 @@ body[data-mode="chromatic"] [data-only="strings"] { display: none !important; }
   box-shadow: 0 0 0 1px var(--line-2) inset;
 }
 
-.select {
-  display: inline-flex; align-items: center; gap: 8px; position: relative;
-  padding: 0 34px 0 14px; height: 42px;
+/* ---- выбор строя ---- */
+.tuning { position: relative; }
+.tuning-btn {
+  display: inline-flex; align-items: center; gap: 10px; width: 100%;
+  height: 42px; padding: 0 14px; text-align: left;
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  transition: border-color .15s, background .15s;
 }
-.select span { color: var(--dim); font-size: 13px; font-weight: 600; }
-.select select {
-  appearance: none; -webkit-appearance: none; border: 0; background: transparent;
-  font-weight: 700; font-size: 14px; padding: 8px 0; outline: none; max-width: 62vw;
+.tuning-btn:hover, .tuning-btn[aria-expanded="true"] { border-color: var(--line-2); background: var(--panel-2); }
+.tuning-cap { color: var(--dim); font-size: 13px; font-weight: 600; }
+.tuning-title { font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tuning-notes { display: inline-flex; gap: 3px; flex: none; }
+.tuning-btn .chev { width: 12px; height: 8px; flex: none; margin-left: auto; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s; }
+.tuning-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+.np {
+  display: inline-flex; align-items: baseline; justify-content: center;
+  min-width: 22px; height: 22px; line-height: 20px; padding: 0 6px; border-radius: 7px;
+  font-size: 12px; font-weight: 800; color: var(--text);
+  background: rgba(255, 240, 220, .07); border: 1px solid rgba(255, 240, 220, .1);
 }
-.select select option { background: #1d1914; color: var(--text); }
-.select::after {
-  content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px; margin-top: -6px;
-  border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg);
-  pointer-events: none;
+.np sub { font-size: 9px; font-weight: 700; color: var(--muted); vertical-align: baseline; position: relative; top: 2px; margin-left: 1px; }
+.np.ch { color: var(--amber); background: rgba(251, 191, 36, .13); border-color: rgba(251, 191, 36, .38); }
+.np.ch sub { color: rgba(251, 191, 36, .75); }
+
+.tuning-pop {
+  position: absolute; z-index: 30; left: 0; top: calc(100% + 8px);
+  width: max(100%, 610px); max-width: calc(100vw - 24px);
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px;
+  background: linear-gradient(180deg, #221d17, #191510);
+  border: 1px solid var(--line-2); border-radius: 18px;
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, .75), 0 0 0 1px rgba(0, 0, 0, .4);
+  animation: pop .16s ease-out;
 }
-.seg button:focus-visible, .chip:focus-visible, .icon-btn:focus-visible, .start:focus-visible, .select:focus-within {
+@keyframes pop { from { opacity: 0; transform: translateY(-6px); } }
+.t-card {
+  display: flex; flex-direction: column; gap: 6px; text-align: left;
+  padding: 12px 14px 13px; border-radius: 13px;
+  background: rgba(255, 240, 220, .025); border: 1px solid transparent;
+  transition: background .15s, border-color .15s;
+}
+.t-card:hover { background: rgba(255, 240, 220, .06); }
+.t-card:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.t-card[aria-selected="true"] {
+  background: linear-gradient(180deg, rgba(251, 191, 36, .13), rgba(251, 191, 36, .04));
+  border-color: rgba(251, 191, 36, .5);
+}
+.t-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.t-head b { font-size: 15px; font-weight: 800; }
+.t-check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
+.t-card[aria-selected="true"] .t-check {
+  border: 0; background: var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5.5 10.2l3 3 6-6.4' fill='none' stroke='%231b1307' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% no-repeat;
+}
+.t-desc { color: var(--muted); font-size: 12.5px; font-weight: 600; line-height: 1.3; }
+.t-notes { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.t-notes .np { height: 26px; line-height: 24px; min-width: 28px; font-size: 13px; padding: 0 7px; }
+
+.seg button:focus-visible, .chip:focus-visible, .icon-btn:focus-visible, .start:focus-visible, .tuning-btn:focus-visible {
   outline: 2px solid var(--amber); outline-offset: 2px;
 }
 
@@ -216,7 +257,7 @@ body[data-mode="chromatic"] [data-only="strings"] { display: none !important; }
 }
 @media (max-width: 899px) {
   .stage { align-content: start; }
-  .neck { height: min(108vw, 64vh, 580px); }
+  .neck { height: min(112vw, 70vh, 600px); padding: 6px; }
 }
 
 .hs-svg .shadow { pointer-events: none; }
@@ -293,15 +334,21 @@ body[data-mode="chromatic"] [data-only="strings"] { display: none !important; }
   .controls { gap: 8px; margin: 12px 0; }
   .seg-mode { width: 100%; }
   .seg-mode button { flex: 1; }
-  .display { padding: 14px 14px 16px; }
-  .meter-wrap { flex: none; min-height: 0; height: 150px; }
-  .note { font-size: clamp(64px, 19vw, 96px); }
-  .controls .select { order: 3; }
+  .display { padding: 12px 14px 12px; }
+  .meter-wrap { flex: none; min-height: 0; height: 104px; margin-top: 8px; }
+  .note { font-size: clamp(58px, 16vw, 84px); }
+  .note-row { margin: 2px 0 0; }
+  .side { font-size: 28px; }
+  .readout { margin-top: 4px; font-size: 14px; }
+  .hint { margin-top: 6px; font-size: 16px; min-height: 22px; }
+  .piano { margin-top: 12px; }
+  .controls .tuning { order: 3; flex: 1 1 100%; }
+  .tuning-pop { width: 100%; grid-template-columns: 1fr; }
 }
 @media (max-width: 420px) {
   .seg button { padding: 8px 11px; font-size: 13.5px; }
   .seg-sm button { padding: 6px 9px; font-size: 12.5px; }
-  .select { flex: 1; }
+  .tuning-cap { display: none; }
   .brand-text span { display: none; }
 }
 

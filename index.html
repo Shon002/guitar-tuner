@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Yellowtail&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=2">
+<link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body data-mode="strings">
 <div class="app">
@@ -44,10 +44,15 @@
       <button type="button" data-v="bass">Бас</button>
       <button type="button" data-v="ukulele">Укулеле</button>
     </div>
-    <label class="select" data-only="strings">
-      <span>Строй</span>
-      <select id="tuning" aria-label="Строй"></select>
-    </label>
+    <div class="tuning" id="tuningBox" data-only="strings">
+      <button type="button" class="tuning-btn" id="tuningBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="Строй">
+        <span class="tuning-cap">Строй</span>
+        <span class="tuning-title" id="tuningTitle"></span>
+        <span class="tuning-notes" id="tuningNotes"></span>
+        <svg class="chev" viewBox="0 0 12 8" aria-hidden="true"><path d="M1.5 1.5l4.5 4.5 4.5-4.5"/></svg>
+      </button>
+      <div class="tuning-pop" id="tuningPop" role="listbox" aria-label="Выбор строя" hidden></div>
+    </div>
     <div class="seg" id="layout" role="group" aria-label="Голова грифа" data-only="strings"></div>
   </nav>
 
@@ -94,7 +99,7 @@
   </footer>
 </div>
 <script src="js/pitch.js?v=1"></script>
-<script src="js/headstock.js?v=1"></script>
-<script src="js/app.js?v=2"></script>
+<script src="js/headstock.js?v=2"></script>
+<script src="js/app.js?v=3"></script>
 </body>
 </html>

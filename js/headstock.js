@@ -76,7 +76,7 @@
       bbox: [108, 290, 292, 562],
       finish: 'koa', board: 'rosewood',
       posts: [[142, 495, -1, 114], [138, 395, -1, 111], [262, 395, 1, 289], [258, 495, 1, 286]],
-      postR: 4, bushR: 8, button: 'pearl', hex: false,
+      postR: 4.6, bushR: 9.5, button: 'pearl', hex: false,
       inlay: 'dot',
       logo: { x: 200, y: 352, size: 30, rot: 0, fill: 'url(#hsMop)', sub: '#f3dfbd' },
       trees: []
@@ -96,12 +96,14 @@
         '<path d="M22,8.2 C30,10.2 43,10.2 50,5" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1.2"/>'
     },
     pearl: {
-      reach: 37, center: 25, halo: 22, rx: 12.5, ry: 10,
+      reach: 50, center: 33, halo: 30, rx: 17.5, ry: 14,
       draw: () =>
-        '<rect x="-6" y="-2.2" width="17" height="4.4" rx="1.2" fill="url(#hsShaft)"/>' +
-        '<rect x="9" y="-4.2" width="4.5" height="8.4" rx="1.4" fill="url(#hsChrome)" stroke="rgba(0,0,0,.35)" stroke-width=".5"/>' +
-        '<ellipse class="face" cx="25" cy="0" rx="12" ry="9.5" stroke="rgba(0,0,0,.35)" stroke-width=".6"/>' +
-        '<ellipse cx="23.5" cy="-4" rx="7" ry="2.6" fill="#fff" opacity=".65"/>'
+        '<rect x="-6" y="-2.9" width="21" height="5.8" rx="1.5" fill="url(#hsShaft)"/>' +
+        '<rect x="12" y="-5.8" width="5.5" height="11.6" rx="1.8" fill="url(#hsChrome)" stroke="rgba(0,0,0,.35)" stroke-width=".5"/>' +
+        '<ellipse class="face" cx="33" cy="0" rx="17" ry="13.5" stroke="rgba(0,0,0,.38)" stroke-width=".7"/>' +
+        '<ellipse cx="33" cy="0.6" rx="13.2" ry="10.2" fill="none" stroke="rgba(120,100,70,.18)" stroke-width="1"/>' +
+        '<ellipse cx="31" cy="-5.6" rx="10" ry="3.6" fill="#fff" opacity=".65"/>' +
+        '<path d="M21,7.5 C27,11.5 39,11.5 45,7.5" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="1.2"/>'
     },
     clover: {
       reach: 66, center: 43, halo: 36, rx: 23, ry: 21,

@@ -13,27 +13,27 @@
     guitar: {
       layouts: { split: '3 + 3', inline: '6 в линию' },
       tunings: [
-        { id: 'standard', title: 'Стандарт', notes: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'] },
-        { id: 'dropD', title: 'Drop D', notes: ['D2', 'A2', 'D3', 'G3', 'B3', 'E4'] },
-        { id: 'dropC', title: 'Drop C', notes: ['C2', 'G2', 'C3', 'F3', 'A3', 'D4'] },
-        { id: 'halfDown', title: 'На полтона ниже', notes: ['Eb2', 'Ab2', 'Db3', 'Gb3', 'Bb3', 'Eb4'] },
-        { id: 'openG', title: 'Open G', notes: ['D2', 'G2', 'D3', 'G3', 'B3', 'D4'] }
+        { id: 'standard', title: 'Стандарт', desc: 'Классический строй', notes: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'] },
+        { id: 'dropD', title: 'Drop D', desc: '6-я струна опущена на тон', notes: ['D2', 'A2', 'D3', 'G3', 'B3', 'E4'] },
+        { id: 'dropC', title: 'Drop C', desc: 'Всё на тон ниже, 6-я — ещё на тон', notes: ['C2', 'G2', 'C3', 'F3', 'A3', 'D4'] },
+        { id: 'halfDown', title: 'Полтона ниже', desc: 'Все струны на полтона ниже', notes: ['Eb2', 'Ab2', 'Db3', 'Gb3', 'Bb3', 'Eb4'] },
+        { id: 'openG', title: 'Open G', desc: 'Открытые струны — аккорд соль мажор', notes: ['D2', 'G2', 'D3', 'G3', 'B3', 'D4'] }
       ],
       looks: () => [[2.9, 'wound'], [2.5, 'wound'], [2.1, 'wound'], [1.6, 'plain'], [1.3, 'plain'], [1.1, 'plain']]
     },
     bass: {
       layouts: { split: '2 + 2', inline: '4 в линию' },
       tunings: [
-        { id: 'standard', title: 'Стандарт', notes: ['E1', 'A1', 'D2', 'G2'] },
-        { id: 'dropD', title: 'Drop D', notes: ['D1', 'A1', 'D2', 'G2'] }
+        { id: 'standard', title: 'Стандарт', desc: 'Классический строй', notes: ['E1', 'A1', 'D2', 'G2'] },
+        { id: 'dropD', title: 'Drop D', desc: '4-я струна опущена на тон', notes: ['D1', 'A1', 'D2', 'G2'] }
       ],
       looks: () => [[4.4, 'wound'], [3.8, 'wound'], [3.2, 'wound'], [2.6, 'wound']]
     },
     ukulele: {
       layouts: { split: '2 + 2' },
       tunings: [
-        { id: 'standard', title: 'Классический', notes: ['G4', 'C4', 'E4', 'A4'] },
-        { id: 'lowG', title: 'С басовой соль (Low G)', notes: ['G3', 'C4', 'E4', 'A4'] }
+        { id: 'standard', title: 'Классический', desc: 'Высокая соль на 4-й струне', notes: ['G4', 'C4', 'E4', 'A4'] },
+        { id: 'lowG', title: 'Low G', desc: 'Басовая соль — 4-я струна на октаву ниже', notes: ['G3', 'C4', 'E4', 'A4'] }
       ],
       looks: t => [t === 'lowG' ? [2.6, 'wound'] : [1.9, 'nylon'], [2.3, 'nylon'], [2.05, 'nylon'], [1.75, 'nylon']]
     }
@@ -89,7 +89,8 @@
   const $ = id => document.getElementById(id);
   const els = {
     notation: $('notation'), sound: $('sound'), mode: $('mode'), instrument: $('instrument'),
-    tuning: $('tuning'), layout: $('layout'), statusLabel: $('statusLabel'), autoChip: $('autoChip'),
+    tuningBox: $('tuningBox'), tuningBtn: $('tuningBtn'), tuningTitle: $('tuningTitle'), tuningNotes: $('tuningNotes'),
+    tuningPop: $('tuningPop'), layout: $('layout'), statusLabel: $('statusLabel'), autoChip: $('autoChip'),
     resetBtn: $('resetBtn'), noteRow: $('noteRow'), note: $('note'), cents: $('cents'), hz: $('hz'),
     meter: $('meter'), hint: $('hint'), piano: $('piano'), gate: $('gate'), startBtn: $('startBtn'),
     gateNote: $('gateNote'), neck: $('neck'), hs: $('headstock')
@@ -436,7 +437,7 @@
     const c = mctx, w = mw, h = mh;
     if (!w || !h) return;
     c.clearRect(0, 0, w, h);
-    const top = 50, cx = w / 2, half = w / 2 - 22;
+    const top = h < 140 ? 40 : 50, cx = w / 2, half = w / 2 - 22;   // на низкой шкале (телефон) линейка плотнее
     const X = v => cx + Math.max(-50, Math.min(50, v)) / 50 * half;
 
     // зелёная зона «в ноте»
@@ -564,10 +565,7 @@
     els.sound.setAttribute('aria-pressed', String(S.sound));
 
     const inst = INSTRUMENTS[S.instrument];
-    els.tuning.innerHTML = inst.tunings.map(t => {
-      const names = t.notes.map(n => { const p = P.parseNote(n), sp = P.spell(p.letter, p.acc, p.octave, S.notation); return sp.name + sp.acc; });
-      return '<option value="' + t.id + '"' + (t.id === S.tuning[S.instrument] ? ' selected' : '') + '>' + t.title + ' · ' + names.join(' ') + '</option>';
-    }).join('');
+    renderTuning();
     const lays = Object.entries(inst.layouts);
     els.layout.hidden = lays.length < 2;
     els.layout.innerHTML = lays.map(([k, t]) => '<button type="button" data-v="' + k + '">' + t + '</button>').join('');
@@ -594,7 +592,65 @@
   onSeg(els.instrument, v => { S.instrument = v; setupInstrument(); });
   onSeg(els.layout, v => { S.layout[S.instrument] = v; renderHeadstock(); });
   onSeg(els.notation, v => { S.notation = v; renderHeadstock(); buildPiano(); });
-  els.tuning.addEventListener('change', () => { S.tuning[S.instrument] = els.tuning.value; saveSettings(); renderControls(); setupInstrument(); });
+
+  // ---------- выбор строя ----------
+  // ноты струн плашками; струны, отличающиеся от стандартного строя, подсвечены
+  function notePills(t, ref, withOctave) {
+    return t.notes.map((n, k) => {
+      const p = P.parseNote(n), sp = P.spell(p.letter, p.acc, p.octave, S.notation);
+      const changed = p.midi !== P.parseNote(ref.notes[k]).midi;
+      return '<span class="np' + (changed ? ' ch' : '') + '">' + sp.name + sp.acc + (withOctave ? '<sub>' + sp.octave + '</sub>' : '') + '</span>';
+    }).join('');
+  }
+
+  function renderTuning() {
+    const inst = INSTRUMENTS[S.instrument], cur = currentTuning(), ref = inst.tunings[0];
+    els.tuningTitle.textContent = cur.title;
+    els.tuningNotes.innerHTML = notePills(cur, ref, false);
+    els.tuningPop.innerHTML = inst.tunings.map(t => {
+      const on = t.id === cur.id;
+      return '<button type="button" class="t-card" role="option" aria-selected="' + on + '" data-id="' + t.id + '">' +
+        '<span class="t-head"><b>' + t.title + '</b><i class="t-check" aria-hidden="true"></i></span>' +
+        '<span class="t-desc">' + t.desc + '</span>' +
+        '<span class="t-notes">' + notePills(t, ref, true) + '</span></button>';
+    }).join('');
+  }
+
+  function openTuning(open) {
+    els.tuningPop.hidden = !open;
+    els.tuningBtn.setAttribute('aria-expanded', String(open));
+    if (!open) return;
+    // не вылезать за правый край экрана
+    els.tuningPop.style.left = '0px';
+    const r = els.tuningPop.getBoundingClientRect(), over = r.right - (window.innerWidth - 12);
+    if (over > 0) els.tuningPop.style.left = -Math.min(over, r.left - 12) + 'px';
+    const sel = els.tuningPop.querySelector('[aria-selected="true"]');
+    if (sel) sel.focus({ preventScroll: true });
+  }
+
+  els.tuningBtn.addEventListener('click', () => openTuning(els.tuningPop.hidden));
+  els.tuningPop.addEventListener('click', e => {
+    const c = e.target.closest('.t-card');
+    if (!c) return;
+    openTuning(false);
+    els.tuningBtn.focus({ preventScroll: true });
+    if (c.dataset.id === S.tuning[S.instrument]) return;
+    S.tuning[S.instrument] = c.dataset.id;
+    saveSettings();
+    renderControls();
+    setupInstrument();
+  });
+  els.tuningPop.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const cards = [...els.tuningPop.querySelectorAll('.t-card')], i = cards.indexOf(document.activeElement);
+    const j = Math.max(0, Math.min(cards.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
+    cards[j].focus();
+    e.preventDefault();
+  });
+  document.addEventListener('click', e => { if (!els.tuningBox.contains(e.target)) openTuning(false); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !els.tuningPop.hidden) { openTuning(false); els.tuningBtn.focus({ preventScroll: true }); }
+  });
   els.sound.addEventListener('click', () => { S.sound = !S.sound; saveSettings(); renderControls(); });
   els.autoChip.addEventListener('click', () => { R.auto = true; if (R.target < 0) R.target = nextUntuned(-1); });
   els.resetBtn.addEventListener('click', () => { R.tuned = R.tuned.map(() => false); R.target = 0; R.auto = true; resetDetection(); });
