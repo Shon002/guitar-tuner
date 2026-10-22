@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Колок — тюнер для гитары, баса и укулеле</title>
+<meta name="description" content="Онлайн-тюнер в браузере: гитара (3+3 и 6 в линию, Drop D и другие строи), бас-гитара, укулеле и хроматический режим с октавами.">
+<meta name="theme-color" content="#0f0d0b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%231a1612'/%3E%3Cpath d='M9 22c3-9 11-9 14-12' stroke='%23fbbf24' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3.6' fill='%234ade80'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Yellowtail&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=2">
+</head>
+<body data-mode="strings">
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="15" fill="#1d1813" stroke="rgba(255,255,255,.08)"/>
+        <path d="M9 22c3-9 11-9 14-12" stroke="#fbbf24" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <circle cx="23" cy="10" r="3.6" fill="#4ade80"/>
+      </svg>
+      <div class="brand-text"><b>Колок</b><span>тюнер</span></div>
+    </div>
+    <div class="top-actions">
+      <div class="seg seg-sm" id="notation" role="group" aria-label="Названия нот">
+        <button type="button" data-v="letters">C D E</button>
+        <button type="button" data-v="solfege">До Ре Ми</button>
+      </div>
+      <button type="button" class="icon-btn" id="sound" aria-pressed="true" title="Сигнал, когда струна настроена">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h3l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.8 6a8.5 8.5 0 0 1 0 12"/><path class="mute" d="M16 9l5 6M21 9l-5 6"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <nav class="controls" aria-label="Настройки">
+    <div class="seg seg-mode" id="mode" role="group" aria-label="Режим">
+      <button type="button" data-v="strings">По струнам</button>
+      <button type="button" data-v="chromatic">Хроматический</button>
+    </div>
+    <div class="seg" id="instrument" role="group" aria-label="Инструмент" data-only="strings">
+      <button type="button" data-v="guitar">Гитара</button>
+      <button type="button" data-v="bass">Бас</button>
+      <button type="button" data-v="ukulele">Укулеле</button>
+    </div>
+    <label class="select" data-only="strings">
+      <span>Строй</span>
+      <select id="tuning" aria-label="Строй"></select>
+    </label>
+    <div class="seg" id="layout" role="group" aria-label="Голова грифа" data-only="strings"></div>
+  </nav>
+
+  <main class="stage">
+    <section class="display" id="display">
+      <div class="status">
+        <span class="status-label" id="statusLabel"></span>
+        <span class="status-actions" data-only="strings">
+          <button type="button" class="chip" id="autoChip" aria-pressed="true" title="Определять струну по звуку">Авто</button>
+          <button type="button" class="chip" id="resetBtn" title="Снять отметки «настроено»">Сбросить</button>
+        </span>
+      </div>
+      <div class="note-row" id="noteRow">
+        <span class="side flat" aria-hidden="true">♭</span>
+        <div class="note" id="note">—</div>
+        <span class="side sharp" aria-hidden="true">♯</span>
+      </div>
+      <div class="readout">
+        <span id="cents" class="cents">—</span>
+        <span class="sep"></span>
+        <span id="hz" class="hz">—</span>
+      </div>
+      <div class="meter-wrap"><canvas id="meter" aria-label="Шкала отклонения в центах"></canvas></div>
+      <div class="hint" id="hint" aria-live="polite"></div>
+      <div class="piano" id="piano" data-only="chromatic"></div>
+
+      <div class="gate" id="gate">
+        <button type="button" class="start" id="startBtn">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg>
+          Включить микрофон
+        </button>
+        <p class="gate-note" id="gateNote">Звук обрабатывается прямо в браузере и никуда не отправляется.</p>
+      </div>
+    </section>
+
+    <section class="neck" id="neck" data-only="strings">
+      <div class="hs" id="headstock"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>A4 = 440 Гц</span>
+    <span data-only="strings">Нажмите на колок, чтобы настраивать конкретную струну</span>
+  </footer>
+</div>
+<script src="js/pitch.js?v=1"></script>
+<script src="js/headstock.js?v=1"></script>
+<script src="js/app.js?v=2"></script>
+</body>
+</html>
