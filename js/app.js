@@ -43,7 +43,7 @@
 
   // ---------- настройки (запоминаются в браузере) ----------
   const DEFAULTS = {
-    mode: 'strings', instrument: 'guitar', notation: 'letters', sound: true, theme: 'dark',
+    tab: 'tuner', mode: 'strings', instrument: 'guitar', notation: 'letters', sound: true, theme: 'dark',
     tuning: { guitar: 'standard', bass: 'standard', ukulele: 'standard' },
     layout: { guitar: 'split', bass: 'split', ukulele: 'split' }
   };
@@ -54,6 +54,7 @@
     try {
       const v = JSON.parse(localStorage.getItem('kolok.v1') || 'null');
       if (v && typeof v === 'object') {
+        if (v.tab === 'tuner' || v.tab === 'metro') s.tab = v.tab;
         if (v.mode === 'strings' || v.mode === 'chromatic') s.mode = v.mode;
         if (INSTRUMENTS[v.instrument]) s.instrument = v.instrument;
         if (v.notation === 'letters' || v.notation === 'solfege') s.notation = v.notation;
@@ -83,7 +84,8 @@
     needle: null, needleV: 0,
     history: []           // точки «змейки» [время, отклонение или null], свежие в начале
   };
-  let ctx = null, analyser = null, lp = null, buf = null, muteUntil = 0, wakeLock = null;
+  let ctx = null, analyser = null, hp = null, lp = null, buf = null, muteUntil = 0, wakeLock = null;
+  let stream = null, src = null, micWanted = false;   // micWanted — микрофон уже включали: вернёмся с метронома — включим сами
   let range = { min: 50, max: 500 };
   let debugFreq;  // для автотестов: подставная частота вместо микрофона
   const detect = P.createDetector();
@@ -91,11 +93,11 @@
   // ---------- DOM ----------
   const $ = id => document.getElementById(id);
   const els = {
-    notation: $('notation'), sound: $('sound'), theme: $('theme'), mode: $('mode'), instrument: $('instrument'),
-    tuningBox: $('tuningBox'), tuningBtn: $('tuningBtn'), tuningTitle: $('tuningTitle'), tuningNotes: $('tuningNotes'),
-    tuningPop: $('tuningPop'), layout: $('layout'), statusLabel: $('statusLabel'), autoChip: $('autoChip'),
+    tab: $('tab'), notation: $('notation'), sound: $('sound'), theme: $('theme'), mode: $('mode'), instrument: $('instrument'),
+    settingsBtn: $('settingsBtn'), settings: $('settings'), settingsClose: $('settingsClose'), settingsScrim: $('settingsScrim'),
+    tuningFor: $('tuningFor'), tuningPop: $('tuningPop'), layout: $('layout'), statusLabel: $('statusLabel'), autoChip: $('autoChip'),
     resetBtn: $('resetBtn'), noteRow: $('noteRow'), note: $('note'), cents: $('cents'), hz: $('hz'),
-    meter: $('meter'), hint: $('hint'), piano: $('piano'), gate: $('gate'), startBtn: $('startBtn'),
+    meter: $('meter'), meterFg: $('meterFg'), hint: $('hint'), piano: $('piano'), gate: $('gate'), startBtn: $('startBtn'),
     gateNote: $('gateNote'), neck: $('neck'), hs: $('headstock')
   };
   let hsSvg = null;
@@ -103,6 +105,7 @@
   const setText = (el, t) => { if (el._t !== t) { el._t = t; el.textContent = t; } };
   const setHTML = (el, h) => { if (el._h !== h) { el._h = h; el.innerHTML = h; } };
   const setClass = (el, c) => { if (el._c !== c) { el._c = c; el.className = c; } };
+  const setAttr = (el, n, v) => { if (el.getAttribute(n) !== v) el.setAttribute(n, v); };
 
   const label = n => P.spell(n.letter, n.acc, n.octave, S.notation);
   const noteHTML = sp => sp.name + (sp.acc ? '<span class="acc">' + sp.acc + '</span>' : '') + '<sub>' + sp.octave + '</sub>';
@@ -207,7 +210,7 @@
     }
     SM.jumps = 0;
     SM.ring.push(m);
-    if (SM.ring.length > 7) SM.ring.shift();
+    if (SM.ring.length > 5) SM.ring.shift();   // медиана по 5 замерам ≈ 150 мс при замере раз в 30 мс
     const med = median(SM.ring);
     if (SM.value == null) { SM.value = med; SM.speed = 0; return SM.value; }
     // фильтр «1 €»: пока высота стоит — сильно гасит дрожь, когда крутят колок — быстро догоняет
@@ -332,21 +335,35 @@
   }
 
   // ---------- главный цикл ----------
-  let lastFrame = 0;
-  function frame(now) {
+  // Крутится, только пока тюнер слушает (или пока догорает змейка): до включения микрофона
+  // и на вкладке метронома страница процессор не занимает. Высота звука считается не чаще
+  // раза в DETECT_MS — бегунок и змейка между замерами движутся плавно сами.
+  const DETECT_MS = 30;
+  let lastFrame = 0, lastDetect = -1e9, looping = false, meterIdle = false;
+  const listening = () => (R.started || debugFreq !== undefined) && S.tab === 'tuner';
+  function wake() {
+    if (looping) return;
+    looping = true;
+    lastFrame = performance.now();
     requestAnimationFrame(frame);
-    const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  }
+  function frame(now) {
+    const dt = Math.min(0.1, Math.max(0, now - lastFrame) / 1000);
     lastFrame = now;
-    let f = null;
-    if (debugFreq !== undefined) f = debugFreq;
-    else if (R.started && analyser && now >= muteUntil) {
-      analyser.getFloatTimeDomainData(buf);
-      const r = detect(buf, ctx.sampleRate, range.min, range.max);
-      if (r) f = r.freq;
+    const on = listening();
+    if (on && now - lastDetect >= DETECT_MS) {
+      lastDetect = now;
+      let f = null;
+      if (debugFreq !== undefined) f = debugFreq;
+      else if (analyser && now >= muteUntil) {
+        analyser.getFloatTimeDomainData(buf);
+        const r = detect(buf, ctx.sampleRate, range.min, range.max);
+        if (r) f = r.freq;
+      }
+      if (now < muteUntil) f = null;
+      const m = f ? smooth(P.freqToMidi(f), now) : silence(now);
+      if (S.mode === 'strings') stringsLogic(m, now); else chromaticLogic(m, now);
     }
-    if (now < muteUntil) f = null;
-    const m = f ? smooth(P.freqToMidi(f), now) : silence(now);
-    if (S.mode === 'strings') stringsLogic(m, now); else chromaticLogic(m, now);
 
     moveNeedle(dt);
     const H = R.history;
@@ -356,6 +373,8 @@
     }
 
     render(now);
+    if (on || R.needle != null || H.some(p => p[1] != null)) requestAnimationFrame(frame);
+    else looping = false;
   }
 
   // бегунок догоняет отклонение как пружина с критическим затуханием: без рывков и без перелёта;
@@ -383,14 +402,16 @@
       const s = R.strings[idx];
       if (s) {
         setHTML(els.note, noteHTML(label(s)));
-        setHTML(els.statusLabel, '<b>' + s.num + '-я струна</b>' + (R.auto ? '' : ' · выбрана вручную'));
+        const t = currentTuning();
+        setHTML(els.statusLabel, '<b>' + s.num + '-я струна</b>' + (R.auto ? '' : ' · выбрана вручную') +
+          (t.id === 'standard' ? '' : ' · ' + t.title));
       } else {
         setHTML(els.note, '✓');
         setHTML(els.statusLabel, '<b>Все струны</b>');
       }
       setText(els.cents, live ? fmtCents(c) : '—');
       setText(els.hz, live ? fmtHz(R.freq) + ' → ' + fmtHz(R.refFreq) + ' Гц' : s ? 'цель ' + fmtHz(s.freq) + ' Гц' : '—');
-      els.autoChip.setAttribute('aria-pressed', String(R.auto));
+      setAttr(els.autoChip, 'aria-pressed', String(R.auto));
       applyPegStates();
     } else {
       const recent = now - R.lastHeard < 1500;
@@ -407,7 +428,10 @@
       updatePiano(live || recent ? R.chromMidi : null, live && a <= TOL);
     }
     renderHint(live, c, a);
-    drawMeter(now);
+    // шкалу перерисовываем, только когда на ней что-то движется
+    const idle = R.needle == null && !R.history.some(p => p[1] != null);
+    if (!idle || !meterIdle) drawMeter(now);
+    meterIdle = idle;
   }
 
   const capital = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -435,19 +459,21 @@
   }
 
   // ---------- шкала и «змейка» ----------
-  const mctx = els.meter.getContext('2d');
-  // «змейку» рисуем непрозрачной на отдельном слое, затухание кладём одним градиентом — без швов на стыках кусков
-  const snake = document.createElement('canvas'), sctx = snake.getContext('2d');
-  let mw = 0, mh = 0;
+  // Два холста друг над другом: нижний — сетка и риски (рисуется только при смене размера или темы),
+  // верхний — змейка и бегунок (каждый кадр). Так не перерисовываем неподвижное и не копируем слои.
+  const mctx = els.meter.getContext('2d'), fctx = els.meterFg.getContext('2d');
+  let mw = 0, mh = 0, bgDirty = true;
   function sizeMeter() {
-    const r = els.meter.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const r = els.meter.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (r.width === mw && r.height === mh) return;
     mw = r.width; mh = r.height;
-    els.meter.width = Math.round(mw * dpr);
-    els.meter.height = Math.round(mh * dpr);
-    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    snake.width = els.meter.width;
-    snake.height = els.meter.height;
-    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const [cv, cx] of [[els.meter, mctx], [els.meterFg, fctx]]) {
+      cv.width = Math.round(mw * dpr);
+      cv.height = Math.round(mh * dpr);
+      cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    bgDirty = true;
+    meterIdle = false;
   }
 
   // цвета шкалы — из CSS-переменных темы (тройки «R, G, B»)
@@ -456,6 +482,7 @@
     const cs = getComputedStyle(document.documentElement);
     const rgb = n => cs.getPropertyValue(n).split(',').map(Number);
     M = { ink: rgb('--ink-rgb'), ok: rgb('--ok-rgb'), warn: rgb('--warn-rgb'), bad: rgb('--bad-rgb') };
+    bgDirty = true;
   }
   const rgba = (c, a) => 'rgba(' + c.join(',') + ',' + a + ')';
 
@@ -471,13 +498,15 @@
     return rgba(rgb, alpha.toFixed(3));
   }
 
-  function drawMeter(now) {
-    const c = mctx, w = mw, h = mh;
-    if (!w || !h) return;
-    c.clearRect(0, 0, w, h);
-    const top = h < 140 ? 40 : 50, cx = w / 2, half = w / 2 - 22;   // на низкой шкале (телефон) линейка плотнее
-    const X = v => cx + Math.max(-50, Math.min(50, v)) / 50 * half;
+  // общая разметка шкалы: где линейка и как центы переходят в пиксели
+  function geom() {
+    const top = mh < 140 ? 40 : 50, cx = mw / 2, half = mw / 2 - 22;   // на низкой шкале (телефон) линейка плотнее
+    return { top, cx, half, X: v => cx + Math.max(-50, Math.min(50, v)) / 50 * half };
+  }
 
+  function drawMeterBg() {
+    const c = mctx, w = mw, h = mh, { top, cx, half, X } = geom();
+    c.clearRect(0, 0, w, h);
     // зелёная зона «в ноте»
     const z = Math.max(3, TOL / 50 * half);
     const g = c.createLinearGradient(0, top - 10, 0, h);
@@ -506,50 +535,72 @@
     [[-50, '−50'], [-25, '−25'], [25, '+25'], [50, '+50']].forEach(([v, s]) => c.fillText(s, X(v), 12));
     c.fillStyle = rgba(M.ok, 1);
     c.fillText('0', cx, 12);
+    bgDirty = false;
+  }
+
+  function drawMeter(now) {
+    const c = fctx, w = mw, h = mh;
+    if (!w || !h) return;
+    if (bgDirty) drawMeterBg();
+    const { top, cx, X } = geom();
+    c.clearRect(0, 0, w, h);
 
     // «змейка» — след бегунка: свежее сверху, старое плавно уплывает вниз и гаснет.
     // Голова — текущее положение бегунка; линия идёт гладкой кривой через середины соседних точек.
+    // Рисуется непрозрачной (иначе на стыках кусков видны швы), затухание кладётся потом одним градиентом.
+    // Соседние куски одного цвета и толщины (по ступеням) идут одним контуром — меньше вызовов отрисовки.
     const P = [[now, R.needle]].concat(R.history).map(([t, v]) => v == null ? null : [X(v), top + (now - t) / SNAKE_MS * (h - top), v]);
     const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-    const sc = sctx;
-    sc.clearRect(0, 0, w, h);
-    sc.lineCap = 'round';
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    let key = '', open = false, any = false;
     for (let k = 0; k < P.length; k++) {
       const a = P[k], p = P[k - 1], n = P[k + 1];
-      if (!a || (!p && !n)) continue;
+      if (!a || (!p && !n)) { if (open) { c.stroke(); open = false; } continue; }
       const s = p ? mid(p, a) : a, e = n ? mid(a, n) : a;
-      sc.strokeStyle = devColor(a[2], 1);
-      sc.lineWidth = 6.5 - 5.3 * Math.min(1, (a[1] - top) / (h - top));
-      sc.beginPath();
-      sc.moveTo(s[0], s[1]);
-      sc.quadraticCurveTo(a[0], a[1], e[0], e[1]);
-      sc.stroke();
+      const col = devColor(Math.round(a[2] / 2) * 2, 1);
+      const lw = Math.round((6.5 - 5.3 * Math.min(1, (a[1] - top) / (h - top))) * 2) / 2;
+      const kk = col + lw;
+      if (!open || kk !== key || !p) {
+        if (open) c.stroke();
+        c.strokeStyle = col;
+        c.lineWidth = lw;
+        c.beginPath();
+        c.moveTo(s[0], s[1]);
+        key = kk; open = true; any = true;
+      }
+      c.quadraticCurveTo(a[0], a[1], e[0], e[1]);
     }
-    const fade = sc.createLinearGradient(0, top, 0, h);
-    fade.addColorStop(0, 'rgba(0,0,0,.95)');
-    fade.addColorStop(1, 'rgba(0,0,0,0)');
-    sc.globalCompositeOperation = 'destination-in';
-    sc.fillStyle = fade;
-    sc.fillRect(0, 0, w, h);
-    sc.globalCompositeOperation = 'source-over';
-    c.drawImage(snake, 0, 0, w, h);
+    if (open) c.stroke();
+    if (any) {
+      const fade = c.createLinearGradient(0, top, 0, h);
+      fade.addColorStop(0, 'rgba(0,0,0,.95)');
+      fade.addColorStop(1, 'rgba(0,0,0,0)');
+      c.globalCompositeOperation = 'destination-in';
+      c.fillStyle = fade;
+      c.fillRect(0, 0, w, h);
+      c.globalCompositeOperation = 'source-over';
+    }
 
     // бегунок
     if (R.needle != null) {
       const x = X(R.needle), col = devColor(R.needle, 1);
-      c.save();
-      c.shadowColor = col;
-      c.shadowBlur = 18;
+      // ореол — полупрозрачная подложка (shadowBlur на телефоне дорог)
+      c.fillStyle = devColor(R.needle, 0.22);
+      roundRect(c, x - 8, top - 39, 16, 50, 8);
+      c.fill();
+      c.beginPath();
+      c.arc(x, top + 2, 13, 0, Math.PI * 2);
+      c.fill();
       c.fillStyle = col;
       roundRect(c, x - 3.5, top - 34, 7, 40, 3.5);
       c.fill();
       c.beginPath();
       c.arc(x, top + 2, 7, 0, Math.PI * 2);
       c.fill();
-      c.restore();
       if (Math.abs(R.needle) > 50) {   // за пределами шкалы — стрелка у края
-        c.fillStyle = col;
         c.font = '800 16px Manrope, sans-serif';
+        c.textAlign = 'center';
         c.fillText(R.needle < 0 ? '«' : '»', R.needle < 0 ? x + 16 : x - 16, top - 12);
       }
     } else {
@@ -612,14 +663,15 @@
     press(els.mode, S.mode);
     press(els.instrument, S.instrument);
     press(els.notation, S.notation);
+    press(els.theme, S.theme);
+    press(els.tab, S.tab);
+    document.body.dataset.tab = S.tab;
     els.sound.setAttribute('aria-pressed', String(S.sound));
-    els.theme.setAttribute('aria-pressed', String(S.theme === 'light'));
-    els.theme.title = S.theme === 'light' ? 'Тёмная тема' : 'Светлая тема';
 
     const inst = INSTRUMENTS[S.instrument];
     renderTuning();
     const lays = Object.entries(inst.layouts);
-    els.layout.hidden = lays.length < 2;
+    $('layoutGroup').hidden = lays.length < 2;
     els.layout.innerHTML = lays.map(([k, t]) => '<button type="button" data-v="' + k + '">' + t + '</button>').join('');
     press(els.layout, S.layout[S.instrument]);
   }
@@ -644,6 +696,17 @@
   onSeg(els.instrument, v => { S.instrument = v; setupInstrument(); });
   onSeg(els.layout, v => { S.layout[S.instrument] = v; renderHeadstock(); });
   onSeg(els.notation, v => { S.notation = v; renderHeadstock(); buildPiano(); });
+  onSeg(els.theme, v => { S.theme = v; applyTheme(); meterIdle = false; render(performance.now()); });
+  onSeg(els.tab, v => {
+    S.tab = v;
+    document.body.dataset.tab = v;
+    if (v === 'metro') pauseTuner();
+    else {
+      if (window.Metronome) Metronome.stop();
+      if (micWanted) start();
+      requestAnimationFrame(() => { sizeMeter(); fitHeadstock(); meterIdle = false; render(performance.now()); });
+    }
+  });
 
   // ---------- выбор строя ----------
   // ноты струн плашками; струны, отличающиеся от стандартного строя, подсвечены
@@ -655,10 +718,10 @@
     }).join('');
   }
 
+  const INST_FOR = { guitar: 'для гитары', bass: 'для баса', ukulele: 'для укулеле' };
   function renderTuning() {
     const inst = INSTRUMENTS[S.instrument], cur = currentTuning(), ref = inst.tunings[0];
-    els.tuningTitle.textContent = cur.title;
-    els.tuningNotes.innerHTML = notePills(cur, ref, false);
+    els.tuningFor.textContent = INST_FOR[S.instrument];
     els.tuningPop.innerHTML = inst.tunings.map(t => {
       const on = t.id === cur.id;
       return '<button type="button" class="t-card" role="option" aria-selected="' + on + '" data-id="' + t.id + '">' +
@@ -668,29 +731,35 @@
     }).join('');
   }
 
-  function openTuning(open) {
-    els.tuningPop.hidden = !open;
-    els.tuningBtn.setAttribute('aria-expanded', String(open));
-    if (!open) return;
-    // не вылезать за правый край экрана
-    els.tuningPop.style.left = '0px';
-    const r = els.tuningPop.getBoundingClientRect(), over = r.right - (window.innerWidth - 12);
-    if (over > 0) els.tuningPop.style.left = -Math.min(over, r.left - 12) + 'px';
-    const sel = els.tuningPop.querySelector('[aria-selected="true"]');
-    if (sel) sel.focus({ preventScroll: true });
+  // ---------- панель настроек ----------
+  function openSettings(open) {
+    els.settings.hidden = !open;
+    els.settingsScrim.hidden = !open;
+    els.settingsBtn.setAttribute('aria-expanded', String(open));
+    if (open) (els.tuningPop.querySelector('[aria-selected="true"]') || els.settingsClose).focus({ preventScroll: true });
   }
+  els.settingsBtn.addEventListener('click', () => openSettings(els.settings.hidden));
+  els.settingsClose.addEventListener('click', () => { openSettings(false); els.settingsBtn.focus({ preventScroll: true }); });
+  els.settingsScrim.addEventListener('click', () => openSettings(false));
+  // путь события берётся на момент нажатия: нажатая карточка строя к этому времени уже перерисована
+  document.addEventListener('click', e => {
+    const path = e.composedPath();
+    if (!els.settings.hidden && !path.includes(els.settings) && !path.includes(els.settingsBtn)) openSettings(false);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !els.settings.hidden) { openSettings(false); els.settingsBtn.focus({ preventScroll: true }); }
+  });
 
-  els.tuningBtn.addEventListener('click', () => openTuning(els.tuningPop.hidden));
+  // строй выбирается в панели; панель остаётся открытой — можно поменять ещё что-то
   els.tuningPop.addEventListener('click', e => {
     const c = e.target.closest('.t-card');
-    if (!c) return;
-    openTuning(false);
-    els.tuningBtn.focus({ preventScroll: true });
-    if (c.dataset.id === S.tuning[S.instrument]) return;
+    if (!c || c.dataset.id === S.tuning[S.instrument]) return;
     S.tuning[S.instrument] = c.dataset.id;
     saveSettings();
     renderControls();
     setupInstrument();
+    const sel = els.tuningPop.querySelector('[aria-selected="true"]');
+    if (sel) sel.focus({ preventScroll: true });
   });
   els.tuningPop.addEventListener('keydown', e => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -699,15 +768,7 @@
     cards[j].focus();
     e.preventDefault();
   });
-  document.addEventListener('click', e => { if (!els.tuningBox.contains(e.target)) openTuning(false); });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !els.tuningPop.hidden) { openTuning(false); els.tuningBtn.focus({ preventScroll: true }); }
-  });
   els.sound.addEventListener('click', () => { S.sound = !S.sound; saveSettings(); renderControls(); });
-  els.theme.addEventListener('click', () => {
-    S.theme = S.theme === 'light' ? 'dark' : 'light';
-    saveSettings(); applyTheme(); renderControls();
-  });
 
   // тема: data-theme на <html> (до загрузки скриптов её ставит строчка в <head>, чтобы не мелькала тёмная)
   function applyTheme() {
@@ -733,32 +794,42 @@
       gateError('Микрофон доступен только на защищённой странице (адрес начинается с https://).');
       return;
     }
+    if (R.started || stream) return;
     els.startBtn.disabled = true;
+    const first = !micWanted;
     try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      ctx = new AC();
-      const stream = await navigator.mediaDevices.getUserMedia({
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        ctx = new AC();
+        hp = ctx.createBiquadFilter();
+        hp.type = 'highpass'; hp.frequency.value = 20; hp.Q.value = 0.7071;
+        lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.Q.value = 0.7071;
+        analyser = ctx.createAnalyser();
+        analyser.fftSize = 8192;
+        hp.connect(lp); lp.connect(analyser);
+        buf = new Float32Array(analyser.fftSize);
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       });
+      if (S.tab !== 'tuner') { releaseMic(); els.startBtn.disabled = false; return; }   // пока ждали разрешения, ушли на метроном
       await ctx.resume();
-      const src = ctx.createMediaStreamSource(stream);
-      const hp = ctx.createBiquadFilter();
-      hp.type = 'highpass'; hp.frequency.value = 20; hp.Q.value = 0.7071;
-      lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass'; lp.Q.value = 0.7071;
-      analyser = ctx.createAnalyser();
-      analyser.fftSize = 8192;
-      src.connect(hp); hp.connect(lp); lp.connect(analyser);
-      buf = new Float32Array(analyser.fftSize);
+      src = ctx.createMediaStreamSource(stream);
+      src.connect(hp);
       updateRange();
       R.started = true;
+      micWanted = true;
+      els.startBtn.disabled = false;
       els.gate.hidden = true;
       keepAwake();
+      wake();
       // на телефоне — сразу к шкале, чтобы рядом были видны и шкала, и голова грифа
-      if (window.innerWidth < 900) document.getElementById('display').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (first && window.innerWidth < 900) document.getElementById('display').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (e) {
+      releaseMic();
       els.startBtn.disabled = false;
-      if (ctx) { ctx.close().catch(() => {}); ctx = null; }
+      els.gate.hidden = false;
       gateError(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')
         ? 'Доступ к микрофону запрещён. Разрешите его в настройках сайта (значок слева от адреса) и нажмите кнопку ещё раз.'
         : e && e.name === 'NotFoundError' ? 'Микрофон не найден. Подключите его и попробуйте снова.'
@@ -767,6 +838,20 @@
   }
   function gateError(t) { els.gateNote.textContent = t; els.gateNote.classList.add('err'); }
   els.startBtn.addEventListener('click', start);
+
+  function releaseMic() {
+    if (src) { src.disconnect(); src = null; }
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  }
+  // на вкладке метронома тюнер не слушает: микрофон отпущен (иначе айфон пускает звук метронома
+  // в разговорный динамик и тише), обработка звука остановлена, экран можно гасить
+  function pauseTuner() {
+    R.started = false;
+    releaseMic();
+    if (ctx) ctx.suspend().catch(() => {});
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    resetDetection();
+  }
 
   // экран не гаснет, пока идёт настройка
   async function keepAwake() {
@@ -785,13 +870,14 @@
   buildPiano();
   sizeMeter();
   new ResizeObserver(() => { sizeMeter(); sizeHeadstock(); }).observe(document.body);
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitHeadstock(); buildPiano(); });
-  requestAnimationFrame(frame);
+  if (window.Metronome) Metronome.mount(document.getElementById('metro'));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitHeadstock(); buildPiano(); meterIdle = false; render(performance.now()); });
+  render(performance.now());
 
   // для автотестов
   window.kolokDebug = {
     state: R, settings: S,
-    feed(f) { debugFreq = f; },
-    startFake() { R.started = true; els.gate.hidden = true; }
+    feed(f) { debugFreq = f; wake(); },
+    startFake() { R.started = true; els.gate.hidden = true; wake(); }
   };
 })();

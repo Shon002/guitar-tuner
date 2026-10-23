@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Колок — тюнер для гитары, баса и укулеле</title>
-<meta name="description" content="Онлайн-тюнер в браузере: гитара (3+3 и 6 в линию, Drop D и другие строи), бас-гитара, укулеле и хроматический режим с октавами.">
+<title>Колок — тюнер и метроном для гитары, баса и укулеле</title>
+<meta name="description" content="Онлайн-тюнер в браузере: гитара (3+3 и 6 в линию, Drop D и другие строи), бас-гитара, укулеле и хроматический режим с октавами; метроном и драм-машина 3/4 и 4/4.">
 <meta name="theme-color" content="#0f0d0b">
 <script>try { var k = JSON.parse(localStorage.getItem('kolok.v1') || 'null'); if (k && k.theme === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%231a1612'/%3E%3Cpath d='M9 22c3-9 11-9 14-12' stroke='%23fbbf24' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3.6' fill='%234ade80'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Yellowtail&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=5">
+<link rel="stylesheet" href="css/metronome.css?v=1">
 </head>
-<body data-mode="strings">
+<body data-mode="strings" data-tab="tuner">
 <div class="app">
   <header class="top">
     <div class="brand">
@@ -22,23 +23,53 @@
         <path d="M9 22c3-9 11-9 14-12" stroke="#fbbf24" stroke-width="2.6" fill="none" stroke-linecap="round"/>
         <circle cx="23" cy="10" r="3.6" fill="#4ade80"/>
       </svg>
-      <div class="brand-text"><b>Колок</b><span>тюнер</span></div>
+      <div class="brand-text"><b>Колок</b><span>тюнер и метроном</span></div>
+    </div>
+    <div class="seg seg-tabs" id="tab" role="group" aria-label="Раздел">
+      <button type="button" data-v="tuner">Тюнер</button>
+      <button type="button" data-v="metro">Метроном</button>
     </div>
     <div class="top-actions">
-      <div class="seg seg-sm" id="notation" role="group" aria-label="Названия нот">
-        <button type="button" data-v="letters">C D E</button>
-        <button type="button" data-v="solfege">До Ре Ми</button>
-      </div>
-      <button type="button" class="icon-btn" id="theme" aria-pressed="false" title="Светлая тема">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5l1.5 1.5M17 17l1.5 1.5M5.5 18.5L7 17M17 7l1.5-1.5"/></g><path class="moon" d="M19.5 14.6A7.6 7.6 0 0 1 9.4 4.5a7.6 7.6 0 1 0 10.1 10.1z"/></svg>
-      </button>
-      <button type="button" class="icon-btn" id="sound" aria-pressed="true" title="Сигнал, когда струна настроена">
+      <button type="button" class="icon-btn" id="sound" aria-pressed="true" title="Сигнал, когда струна настроена" data-only-tab="tuner">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h3l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.8 6a8.5 8.5 0 0 1 0 12"/><path class="mute" d="M16 9l5 6M21 9l-5 6"/></svg>
       </button>
+      <button type="button" class="icon-btn" id="settingsBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings" title="Настройки">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
+      </button>
+    </div>
+    <div class="settings" id="settings" role="dialog" aria-label="Настройки" hidden>
+      <div class="set-head"><b>Настройки</b>
+        <button type="button" class="icon-btn set-close" id="settingsClose" title="Закрыть">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <section class="set-group" data-only="strings" data-only-tab="tuner">
+        <h3>Строй <span id="tuningFor"></span></h3>
+        <div class="tuning-pop" id="tuningPop" role="listbox" aria-label="Выбор строя"></div>
+      </section>
+      <section class="set-group" id="layoutGroup" data-only="strings" data-only-tab="tuner">
+        <h3>Голова грифа</h3>
+        <div class="seg" id="layout" role="group" aria-label="Голова грифа"></div>
+      </section>
+      <section class="set-group" data-only-tab="tuner">
+        <h3>Названия нот</h3>
+        <div class="seg" id="notation" role="group" aria-label="Названия нот">
+          <button type="button" data-v="letters">C D E</button>
+          <button type="button" data-v="solfege">До Ре Ми</button>
+        </div>
+      </section>
+      <section class="set-group">
+        <h3>Тема</h3>
+        <div class="seg" id="theme" role="group" aria-label="Тема">
+          <button type="button" data-v="dark">Тёмная</button>
+          <button type="button" data-v="light">Светлая</button>
+        </div>
+      </section>
     </div>
   </header>
+  <div class="settings-scrim" id="settingsScrim" hidden></div>
 
-  <nav class="controls" aria-label="Настройки">
+  <nav class="controls" aria-label="Режим и инструмент" data-only-tab="tuner">
     <div class="seg seg-mode" id="mode" role="group" aria-label="Режим">
       <button type="button" data-v="strings">По струнам</button>
       <button type="button" data-v="chromatic">Хроматический</button>
@@ -48,19 +79,9 @@
       <button type="button" data-v="bass">Бас</button>
       <button type="button" data-v="ukulele">Укулеле</button>
     </div>
-    <div class="tuning" id="tuningBox" data-only="strings">
-      <button type="button" class="tuning-btn" id="tuningBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="Строй">
-        <span class="tuning-cap">Строй</span>
-        <span class="tuning-title" id="tuningTitle"></span>
-        <span class="tuning-notes" id="tuningNotes"></span>
-        <svg class="chev" viewBox="0 0 12 8" aria-hidden="true"><path d="M1.5 1.5l4.5 4.5 4.5-4.5"/></svg>
-      </button>
-      <div class="tuning-pop" id="tuningPop" role="listbox" aria-label="Выбор строя" hidden></div>
-    </div>
-    <div class="seg" id="layout" role="group" aria-label="Голова грифа" data-only="strings"></div>
   </nav>
 
-  <main class="stage">
+  <main class="stage" data-only-tab="tuner">
     <section class="display" id="display">
       <div class="status">
         <span class="status-label" id="statusLabel"></span>
@@ -79,7 +100,7 @@
         <span class="sep"></span>
         <span id="hz" class="hz">—</span>
       </div>
-      <div class="meter-wrap"><canvas id="meter" aria-label="Шкала отклонения в центах"></canvas></div>
+      <div class="meter-wrap"><canvas id="meter" aria-label="Шкала отклонения в центах"></canvas><canvas id="meterFg" aria-hidden="true"></canvas></div>
       <div class="hint" id="hint" aria-live="polite"></div>
       <div class="piano" id="piano" data-only="chromatic"></div>
 
@@ -97,13 +118,16 @@
     </section>
   </main>
 
-  <footer class="foot">
+  <main class="metro" id="metro" data-only-tab="metro" aria-label="Метроном"></main>
+
+  <footer class="foot" data-only-tab="tuner">
     <span>A4 = 440 Гц</span>
     <span data-only="strings">Нажмите на колок, чтобы настраивать конкретную струну</span>
   </footer>
 </div>
-<script src="js/pitch.js?v=1"></script>
-<script src="js/headstock.js?v=3"></script>
-<script src="js/app.js?v=4"></script>
+<script src="js/pitch.js?v=2"></script>
+<script src="js/headstock.js?v=4"></script>
+<script src="js/metronome.js?v=1"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>

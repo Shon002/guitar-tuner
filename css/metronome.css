@@ -1,0 +1,154 @@
+/* ---- метроном и драм-машина ---- */
+.metro { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 20px 0 8px; }
+
+.m-card {
+  position: relative; width: 100%; max-width: 560px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 22px;
+  padding: 26px 28px 22px;
+  background: linear-gradient(180deg, rgba(255, 248, 235, .055), rgba(255, 248, 235, .02));
+  border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 30px 80px -40px rgba(0, 0, 0, .8);
+  -webkit-user-select: none; user-select: none;
+}
+.m-face { display: flex; flex-direction: column; justify-content: center; gap: 26px; padding: 4px 0 6px; }
+
+/* доли: все точки одинаковые, текущая вспыхивает (анимируются только opacity и transform) */
+.m-beats { display: flex; justify-content: center; gap: 20px; }
+.m-dot {
+  position: relative; width: 48px; height: 48px; border-radius: 50%;
+  border: 2px solid var(--line-2); background: var(--panel);
+}
+.m-dot::before, .m-dot::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
+.m-dot::before {
+  inset: 5px;
+  background: linear-gradient(180deg, #ffd36b, #f2a520);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .4) inset;
+  opacity: 0; transform: scale(.5);
+  transition: opacity .34s ease-out, transform .34s ease-out;
+}
+.m-dot::after { inset: -2px; border: 2px solid var(--amber); opacity: 0; }
+.m-dot.on::before { opacity: 1; transform: none; transition: none; }
+.m-dot.on::after { animation: m-halo .5s ease-out; }
+@keyframes m-halo { from { opacity: .75; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+
+/* темп: крупное число, под ним «− ползунок +» */
+.m-tempo { display: grid; grid-template-columns: 56px minmax(0, 1fr) 56px; align-items: center; gap: 14px; }
+.m-step {
+  width: 56px; height: 56px; border-radius: 50%;
+  border: 1px solid var(--line-2); background: var(--panel-2);
+  display: grid; place-items: center;
+  touch-action: none; -webkit-touch-callout: none;
+  transition: transform .08s, background .15s;
+}
+.m-step:active { transform: scale(.93); }
+.m-step svg { width: 26px; height: 26px; fill: none; stroke: var(--text); stroke-width: 2.4; stroke-linecap: round; }
+.m-bpm { display: flex; flex-direction: column; align-items: center; }
+.m-num {
+  font-size: 156px; line-height: .86; font-weight: 800; letter-spacing: -.05em;
+  font-variant-numeric: tabular-nums; padding-right: .04em;
+}
+.m-unit { margin-top: 14px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+
+/* ползунок: заливка до бегунка — через --p (доля от 0 до 1), которую ставит скрипт */
+.m-range {
+  --p: .286;
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; height: 44px; margin: 0; background: transparent;
+  --fill: linear-gradient(90deg, var(--amber) calc(14px + (100% - 28px) * var(--p)), var(--line-2) 0);
+}
+.m-range:focus { outline: none; }
+.m-range::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--fill); }
+.m-range::-moz-range-track { height: 6px; border-radius: 3px; background: var(--fill); }
+.m-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 28px; height: 28px; margin-top: -11px; border: 0; border-radius: 50%;
+  background: linear-gradient(180deg, #ffe08f, #f2a520);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .5) inset, 0 3px 10px rgba(0, 0, 0, .35), 0 0 0 5px rgba(251, 191, 36, .16);
+}
+.m-range::-moz-range-thumb {
+  width: 28px; height: 28px; border: 0; border-radius: 50%;
+  background: linear-gradient(180deg, #ffe08f, #f2a520);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .35), 0 0 0 5px rgba(251, 191, 36, .16);
+}
+.m-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--amber); }
+.m-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--amber); }
+
+/* размер и звук */
+.m-opts { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px 16px; }
+.m-cap { color: var(--muted); font-size: 14px; font-weight: 700; }
+.seg.m-seg { display: flex; padding: 4px; border-radius: 15px; }
+.seg.m-seg button { flex: 1 1 0; min-width: 0; height: 44px; padding: 0 10px; font-size: 15px; border-radius: 11px; }
+
+/* старт / стоп */
+.m-go {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  height: 68px; margin-top: 2px; border: 0; border-radius: 20px;
+  font-size: 20px; font-weight: 800; letter-spacing: .01em; color: #1b1307;
+  background: linear-gradient(180deg, #ffd56f, #f29e14);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .45) inset, 0 14px 36px -14px rgba(245, 158, 11, .6);
+  touch-action: manipulation;
+  transition: transform .08s;
+}
+.m-go:active { transform: scale(.985); }
+.m-go svg { width: 24px; height: 24px; fill: currentColor; }
+.m-go .i-stop { display: none; }
+.m-go[aria-pressed="true"] {
+  color: var(--text); background: var(--panel-2);
+  box-shadow: 0 0 0 1px var(--line-2) inset;
+}
+.m-go[aria-pressed="true"] svg { fill: var(--amber); }
+.m-go[aria-pressed="true"] .i-play { display: none; }
+.m-go[aria-pressed="true"] .i-stop { display: inline; }
+.m-step:focus-visible, .m-go:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+.m-keys { display: none; margin: -8px 0 0; text-align: center; color: var(--dim); font-size: 12.5px; font-weight: 600; }
+.m-keys kbd {
+  font: inherit; font-weight: 700; color: var(--muted);
+  padding: 1px 7px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--panel);
+}
+@media (hover: hover) { .m-step:hover { background: rgba(255, 248, 235, .1); } }
+@media (hover: hover) and (pointer: fine) { .m-keys { display: block; } }
+
+/* телефон: карточка на весь экран под шапкой, управление — внизу, под большим пальцем */
+@media (max-width: 599px) {
+  .metro { justify-content: flex-start; padding: 12px 0 0; }
+  .m-card {
+    min-height: calc(100vh - 136px); min-height: calc(100svh - 136px);
+    padding: 18px 16px 16px; gap: 16px;
+  }
+  .m-face { flex: 1; gap: clamp(14px, 3.4svh, 34px); padding: 0; }
+  .m-beats { gap: 18px; }
+  .m-tempo { gap: 10px; }
+  .m-num { font-size: min(44vw, 170px); font-size: min(44vw, 20svh, 170px); }
+  .m-unit { margin-top: 10px; font-size: 11px; }
+  .m-opts { gap: 10px 12px; }
+  .seg.m-seg button { height: 46px; font-size: 15px; }
+  .m-go { height: 66px; }
+}
+/* низкий экран (маленький телефон, Safari с панелями): всё плотнее, но кнопки остаются пальцевыми */
+@media (max-width: 599px) and (max-height: 740px) {
+  .m-card { padding: 14px; gap: 12px; }
+  .m-face { gap: 14px; }
+  .m-dot { width: 40px; height: 40px; }
+  .m-dot::before { inset: 4px; }
+  .m-num { font-size: min(44vw, 150px); font-size: min(44vw, 17svh, 150px); }
+  .m-unit { margin-top: 6px; }
+  .m-tempo { grid-template-columns: 50px minmax(0, 1fr) 50px; }
+  .m-step { width: 50px; height: 50px; }
+  .m-opts { gap: 8px 12px; }
+  .seg.m-seg button { height: 44px; }
+  .m-go { height: 58px; border-radius: 18px; }
+}
+
+/* светлая тема */
+[data-theme="light"] .m-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .78), rgba(255, 255, 255, .5));
+  box-shadow: 0 30px 70px -44px rgba(90, 55, 20, .45);
+}
+[data-theme="light"] .m-dot { background: rgba(255, 255, 255, .7); }
+[data-theme="light"] .m-step { background: #fff; box-shadow: 0 2px 8px rgba(70, 45, 20, .06); }
+@media (hover: hover) { [data-theme="light"] .m-step:hover { background: #fffaf2; } }
+[data-theme="light"] .m-range::-webkit-slider-thumb { box-shadow: 0 1px 0 rgba(255, 255, 255, .5) inset, 0 3px 8px rgba(90, 55, 20, .3), 0 0 0 5px rgba(217, 119, 6, .14); }
+[data-theme="light"] .m-range::-moz-range-thumb { box-shadow: 0 3px 8px rgba(90, 55, 20, .3), 0 0 0 5px rgba(217, 119, 6, .14); }
+[data-theme="light"] .m-go { box-shadow: 0 1px 0 rgba(255, 255, 255, .5) inset, 0 14px 30px -16px rgba(217, 119, 6, .55); }
+[data-theme="light"] .m-go[aria-pressed="true"] { background: #fff; box-shadow: 0 0 0 1px var(--line-2) inset, 0 2px 8px rgba(70, 45, 20, .06); }

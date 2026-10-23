@@ -55,8 +55,8 @@
     let d = new Float64Array(0), cm = new Float64Array(0);
 
     return function detect(buf, sr, minF, maxF, minRms) {
-      if (minRms === undefined) minRms = 0.004;
-      const D = Math.max(1, Math.ceil(sr / minF / 1100));
+      if (minRms === undefined) minRms = 0.001;   // тонкая 1-я струна в далёкий микрофон телефона тихая; шум отсекает проверка чистоты тона ниже
+      const D = Math.min(2, Math.ceil(sr / minF / 600));   // вдвое — уже для гитары; сильнее нельзя: портятся высокие ноты
       const srD = sr / D;
       const tauMax = Math.ceil(srD / minF);
       const tauMin = Math.max(2, Math.floor(srD / maxF));

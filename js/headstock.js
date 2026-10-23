@@ -74,7 +74,7 @@
       bbox: [98, 289, 302, 562],
       finish: 'cherry', board: 'rosewood', edge: 'rgba(30,4,0,.6)',
       posts: [[138, 500, -1, 108], [131, 390, -1, 101], [269, 390, 1, 299], [262, 500, 1, 292]],
-      postR: 7, bushR: 12, bush: 'press', button: 'clover',
+      postR: 7, bushR: 12, bush: 'press', button: 'clover', btnScale: 1.3,
       truss: 'bell',
       logo: { x: 200, y: 352, size: 36, rot: 0, kind: 'gold' },
       trees: []
@@ -89,7 +89,7 @@
       bbox: [122, 149, 303, 562],
       finish: 'maple', board: 'maple', edge: 'rgba(110,52,8,.55)',
       posts: [[152, 505, -1, 124], [152, 432, -1, 124], [152, 359, -1, 124], [152, 286, -1, 124]],
-      postR: 7, bushR: 12, bush: 'press', button: 'ear',
+      postR: 7, bushR: 12, bush: 'press', button: 'ear', btnScale: 1.3,
       truss: null,
       logo: { x: 248, y: 240, size: 38, rot: -90, kind: 'decal' },
       trees: [{ idx: [3], y: 404, kind: 'button' }]
@@ -267,7 +267,7 @@
   }
 
   function pegSvg(s, B) {
-    return '<g class="peg" data-i="' + s.k + '" transform="translate(' + s.bx + ',' + s.py + ') scale(' + s.side + ',1)">' +
+    return '<g class="peg" data-i="' + s.k + '" transform="translate(' + s.bx + ',' + s.py + ') scale(' + s.side * B.k + ',' + B.k + ')">' +
       '<circle class="halo" cx="' + B.center + '" cy="0" r="' + B.halo + '"/>' +
       B.draw() +
       '<circle class="ring" cx="' + B.center + '" cy="0" r="' + (B.halo - 6) + '"/>' +
@@ -502,7 +502,7 @@
   }
 
   function labelSvg(s, B) {
-    const tip = r1(s.bx + s.side * (B.reach + 9)), L = s.lab, w = 64;
+    const tip = r1(s.bx + s.side * (B.reach * B.k + 9)), L = s.lab, w = 64;
     return '<g class="lbl" data-i="' + s.k + '" data-tip="' + tip + '" data-side="' + s.side + '" data-y="' + s.py + '" ' +
       'transform="translate(' + (s.side < 0 ? tip - w : tip) + ',' + s.py + ')">' +
       '<rect class="pill" x="0" y="-14" width="' + w + '" height="28" rx="14"/>' +
@@ -520,7 +520,7 @@
   /* o = { instrument, layout, labels: [{name, acc, octave}], looks: [{sw, kind}] } — всё в физическом порядке струн */
   function build(o) {
     const key = designKey(o.instrument, o.layout), ds = DESIGNS[key], N = ds.posts.length;
-    const B = BUTTONS[ds.button];
+    const B = Object.assign({ k: ds.btnScale || 1 }, BUTTONS[ds.button]);   // k — во сколько раз крупнее рисовать колки (у баса голова больше)
     const nutL = CX - ds.nutHalf, span = 2 * (ds.nutHalf - ds.nutMargin);
     const S = ds.posts.map((p, k) => {
       const [px, py, side, bx] = p, x0 = nutL + ds.nutMargin + span * k / (N - 1);
@@ -531,7 +531,7 @@
     });
     const board = 'M' + (CX - ds.nutHalf) + ',' + ds.nutY + ' L' + (CX + ds.nutHalf) + ',' + ds.nutY + ' L' + (CX + ds.botHalf) + ',' + ds.botY +
       ' L' + (CX - ds.botHalf) + ',' + ds.botY + ' Z';
-    const shadowBtn = s => '<ellipse cx="' + r1(s.bx + s.side * B.center) + '" cy="' + s.py + '" rx="' + B.rx + '" ry="' + B.ry + '"/>';
+    const shadowBtn = s => '<ellipse cx="' + r1(s.bx + s.side * B.center * B.k) + '" cy="' + s.py + '" rx="' + r1(B.rx * B.k) + '" ry="' + r1(B.ry * B.k) + '"/>';
 
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + ds.view.join(' ') + '" class="hs-svg" data-design="' + key + '" ' +
       'role="img" aria-label="Голова грифа: нажмите на колок, чтобы выбрать струну">' +
