@@ -6,7 +6,9 @@
   const TOL = 4;          // ¢ — нота «попала»
   const HOLD_MS = 600;    // столько удерживать ноту в зоне, чтобы струна засчиталась
   const DRIFT = 12;       // ¢ — настроенная струна «уехала»
-  const HIST = 150;       // длина «змейки» в кадрах (~2,5 с)
+  const SNAKE_MS = 4000;  // «змейка» проходит шкалу сверху вниз за 4 с — от частоты кадров не зависит
+  const SNAKE_STEP = 25;  // мс между точками «змейки»
+  const NEEDLE_W = 16;    // жёсткость пружины бегунка, рад/с: больше — быстрее, меньше — плавнее
 
   // ноты строёв — в физическом порядке струн: от самой толстой (слева на голове грифа) к самой тонкой
   const INSTRUMENTS = {
@@ -41,7 +43,7 @@
 
   // ---------- настройки (запоминаются в браузере) ----------
   const DEFAULTS = {
-    mode: 'strings', instrument: 'guitar', notation: 'letters', sound: true,
+    mode: 'strings', instrument: 'guitar', notation: 'letters', sound: true, theme: 'dark',
     tuning: { guitar: 'standard', bass: 'standard', ukulele: 'standard' },
     layout: { guitar: 'split', bass: 'split', ukulele: 'split' }
   };
@@ -56,6 +58,7 @@
         if (INSTRUMENTS[v.instrument]) s.instrument = v.instrument;
         if (v.notation === 'letters' || v.notation === 'solfege') s.notation = v.notation;
         if (typeof v.sound === 'boolean') s.sound = v.sound;
+        if (v.theme === 'dark' || v.theme === 'light') s.theme = v.theme;
         for (const k of Object.keys(INSTRUMENTS)) {
           if (v.tuning && INSTRUMENTS[k].tunings.some(t => t.id === v.tuning[k])) s.tuning[k] = v.tuning[k];
           if (v.layout && INSTRUMENTS[k].layouts[v.layout[k]]) s.layout[k] = v.layout[k];
@@ -77,8 +80,8 @@
     holdStart: 0, offStart: 0, awarded: false,
     shown: -1, lastHeard: -1e9,
     chromMidi: null,
-    needle: null,
-    history: []
+    needle: null, needleV: 0,
+    history: []           // точки «змейки» [время, отклонение или null], свежие в начале
   };
   let ctx = null, analyser = null, lp = null, buf = null, muteUntil = 0, wakeLock = null;
   let range = { min: 50, max: 500 };
@@ -88,7 +91,7 @@
   // ---------- DOM ----------
   const $ = id => document.getElementById(id);
   const els = {
-    notation: $('notation'), sound: $('sound'), mode: $('mode'), instrument: $('instrument'),
+    notation: $('notation'), sound: $('sound'), theme: $('theme'), mode: $('mode'), instrument: $('instrument'),
     tuningBox: $('tuningBox'), tuningBtn: $('tuningBtn'), tuningTitle: $('tuningTitle'), tuningNotes: $('tuningNotes'),
     tuningPop: $('tuningPop'), layout: $('layout'), statusLabel: $('statusLabel'), autoChip: $('autoChip'),
     resetBtn: $('resetBtn'), noteRow: $('noteRow'), note: $('note'), cents: $('cents'), hz: $('hz'),
@@ -188,10 +191,13 @@
   }
 
   // ---------- сглаживание ----------
-  const SM = { ring: [], jumps: 0, value: null, last: -1e9 };
+  const SM = { ring: [], jumps: 0, value: null, speed: 0, last: -1e9 };
   const median = a => { const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; };
+  // доля шага сглаживания за dt секунд при частоте среза fc Гц
+  const alpha = (fc, dt) => 1 / (1 + 1 / (2 * Math.PI * fc * dt));
 
   function smooth(m, now) {
+    const dt = Math.min(0.1, Math.max(0.001, (now - SM.last) / 1000));
     SM.last = now;
     if (SM.ring.length && Math.abs(m - median(SM.ring)) > 0.6) {
       // одиночный выброс игнорируем; три подряд — значит, зазвучала другая нота
@@ -203,7 +209,10 @@
     SM.ring.push(m);
     if (SM.ring.length > 7) SM.ring.shift();
     const med = median(SM.ring);
-    SM.value = SM.value == null ? med : SM.value + 0.35 * (med - SM.value);
+    if (SM.value == null) { SM.value = med; SM.speed = 0; return SM.value; }
+    // фильтр «1 €»: пока высота стоит — сильно гасит дрожь, когда крутят колок — быстро догоняет
+    SM.speed += alpha(1, dt) * ((med - SM.value) / dt - SM.speed);
+    SM.value += alpha(0.8 + 4 * Math.abs(SM.speed), dt) * (med - SM.value);
     return SM.value;
   }
   function silence(now) {
@@ -215,6 +224,7 @@
     setActive(-1);
     R.cents = null; R.freq = null; R.chromMidi = null; R.shown = -1; R.lastHeard = -1e9;
     R.history.length = 0;
+    R.needle = null; R.needleV = 0;
   }
 
   // ---------- логика «по струнам» ----------
@@ -322,8 +332,11 @@
   }
 
   // ---------- главный цикл ----------
+  let lastFrame = 0;
   function frame(now) {
     requestAnimationFrame(frame);
+    const dt = Math.min(0.1, (now - lastFrame) / 1000);
+    lastFrame = now;
     let f = null;
     if (debugFreq !== undefined) f = debugFreq;
     else if (R.started && analyser && now >= muteUntil) {
@@ -335,12 +348,24 @@
     const m = f ? smooth(P.freqToMidi(f), now) : silence(now);
     if (S.mode === 'strings') stringsLogic(m, now); else chromaticLogic(m, now);
 
-    R.history.unshift(R.cents == null ? null : Math.max(-60, Math.min(60, R.cents)));
-    if (R.history.length > HIST) R.history.length = HIST;
-    if (R.cents == null) R.needle = null;
-    else R.needle = R.needle == null ? R.cents : R.needle + (R.cents - R.needle) * 0.4;
+    moveNeedle(dt);
+    const H = R.history;
+    if (!H.length || now - H[0][0] >= SNAKE_STEP) {
+      H.unshift([now, R.needle == null ? null : Math.max(-60, Math.min(60, R.needle))]);
+      while (H.length > 2 && now - H[H.length - 2][0] > SNAKE_MS) H.pop();
+    }
 
     render(now);
+  }
+
+  // бегунок догоняет отклонение как пружина с критическим затуханием: без рывков и без перелёта;
+  // шаг посчитан точно, поэтому плавность не зависит от частоты кадров
+  function moveNeedle(dt) {
+    if (R.cents == null) { R.needle = null; R.needleV = 0; return; }
+    if (R.needle == null) { R.needle = R.cents; R.needleV = 0; return; }
+    const x = R.needle - R.cents, k = R.needleV + NEEDLE_W * x, e = Math.exp(-NEEDLE_W * dt);
+    R.needle = R.cents + (x + k * dt) * e;
+    R.needleV = (R.needleV - NEEDLE_W * k * dt) * e;
   }
 
   // ---------- отрисовка текста ----------
@@ -382,7 +407,7 @@
       updatePiano(live || recent ? R.chromMidi : null, live && a <= TOL);
     }
     renderHint(live, c, a);
-    drawMeter();
+    drawMeter(now);
   }
 
   const capital = s => s.charAt(0).toUpperCase() + s.slice(1);
@@ -411,6 +436,8 @@
 
   // ---------- шкала и «змейка» ----------
   const mctx = els.meter.getContext('2d');
+  // «змейку» рисуем непрозрачной на отдельном слое, затухание кладём одним градиентом — без швов на стыках кусков
+  const snake = document.createElement('canvas'), sctx = snake.getContext('2d');
   let mw = 0, mh = 0;
   function sizeMeter() {
     const r = els.meter.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -418,22 +445,33 @@
     els.meter.width = Math.round(mw * dpr);
     els.meter.height = Math.round(mh * dpr);
     mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    snake.width = els.meter.width;
+    snake.height = els.meter.height;
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
+
+  // цвета шкалы — из CSS-переменных темы (тройки «R, G, B»)
+  let M = null;
+  function readPalette() {
+    const cs = getComputedStyle(document.documentElement);
+    const rgb = n => cs.getPropertyValue(n).split(',').map(Number);
+    M = { ink: rgb('--ink-rgb'), ok: rgb('--ok-rgb'), warn: rgb('--warn-rgb'), bad: rgb('--bad-rgb') };
+  }
+  const rgba = (c, a) => 'rgba(' + c.join(',') + ',' + a + ')';
 
   function devColor(c, alpha) {
     const a = Math.abs(c);
     let rgb;
-    if (a <= TOL) rgb = [74, 222, 128];
+    if (a <= TOL) rgb = M.ok;
     else {
       const t = Math.min(1, (a - TOL) / 30);
-      const A = [74, 222, 128], B = [251, 191, 36], C = [248, 113, 113];
       const mix = (p, q, u) => p.map((v, k) => Math.round(v + (q[k] - v) * u));
-      rgb = t < 0.4 ? mix(A, B, t / 0.4) : mix(B, C, (t - 0.4) / 0.6);
+      rgb = t < 0.4 ? mix(M.ok, M.warn, t / 0.4) : mix(M.warn, M.bad, (t - 0.4) / 0.6);
     }
-    return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + alpha.toFixed(3) + ')';
+    return rgba(rgb, alpha.toFixed(3));
   }
 
-  function drawMeter() {
+  function drawMeter(now) {
     const c = mctx, w = mw, h = mh;
     if (!w || !h) return;
     c.clearRect(0, 0, w, h);
@@ -443,46 +481,58 @@
     // зелёная зона «в ноте»
     const z = Math.max(3, TOL / 50 * half);
     const g = c.createLinearGradient(0, top - 10, 0, h);
-    g.addColorStop(0, 'rgba(74,222,128,.26)');
-    g.addColorStop(1, 'rgba(74,222,128,0)');
+    g.addColorStop(0, rgba(M.ok, .26));
+    g.addColorStop(1, rgba(M.ok, 0));
     c.fillStyle = g;
     c.fillRect(cx - z, top - 10, 2 * z, h - top + 10);
 
     // сетка через 10 центов
     c.lineWidth = 1;
     for (let v = -50; v <= 50; v += 10) {
-      c.strokeStyle = v === 0 ? 'rgba(74,222,128,.32)' : 'rgba(255,240,220,.05)';
+      c.strokeStyle = v === 0 ? rgba(M.ok, .32) : rgba(M.ink, .05);
       const x = Math.round(X(v)) + 0.5;
       c.beginPath(); c.moveTo(x, top); c.lineTo(x, h); c.stroke();
     }
     // риски шкалы
     for (let v = -50; v <= 50; v += 5) {
       const x = Math.round(X(v)) + 0.5, len = v === 0 ? 16 : v % 25 === 0 ? 11 : v % 10 === 0 ? 8 : 5;
-      c.strokeStyle = v === 0 ? '#4ade80' : v % 25 === 0 ? 'rgba(255,240,220,.55)' : 'rgba(255,240,220,.22)';
+      c.strokeStyle = v === 0 ? rgba(M.ok, 1) : v % 25 === 0 ? rgba(M.ink, .55) : rgba(M.ink, .22);
       c.lineWidth = v === 0 ? 2 : 1;
       c.beginPath(); c.moveTo(x, top - 6 - len); c.lineTo(x, top - 6); c.stroke();
     }
     c.font = '700 11px Manrope, system-ui, sans-serif';
     c.textAlign = 'center';
-    c.fillStyle = 'rgba(255,240,220,.42)';
+    c.fillStyle = rgba(M.ink, .42);
     [[-50, '−50'], [-25, '−25'], [25, '+25'], [50, '+50']].forEach(([v, s]) => c.fillText(s, X(v), 12));
-    c.fillStyle = '#4ade80';
+    c.fillStyle = rgba(M.ok, 1);
     c.fillText('0', cx, 12);
 
-    // «змейка»: свежие значения сверху, старые уплывают вниз и гаснут
-    const H = R.history, step = (h - top) / (HIST - 1);
-    c.lineCap = 'round';
-    for (let k = 0; k < H.length - 1; k++) {
-      const a = H[k], b = H[k + 1];
-      if (a == null || b == null) continue;
-      const t = k / HIST;
-      c.strokeStyle = devColor(a, (1 - t) * 0.95);
-      c.lineWidth = 6.5 - 5.3 * t;
-      c.beginPath();
-      c.moveTo(X(a), top + k * step);
-      c.lineTo(X(b), top + (k + 1) * step);
-      c.stroke();
+    // «змейка» — след бегунка: свежее сверху, старое плавно уплывает вниз и гаснет.
+    // Голова — текущее положение бегунка; линия идёт гладкой кривой через середины соседних точек.
+    const P = [[now, R.needle]].concat(R.history).map(([t, v]) => v == null ? null : [X(v), top + (now - t) / SNAKE_MS * (h - top), v]);
+    const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+    const sc = sctx;
+    sc.clearRect(0, 0, w, h);
+    sc.lineCap = 'round';
+    for (let k = 0; k < P.length; k++) {
+      const a = P[k], p = P[k - 1], n = P[k + 1];
+      if (!a || (!p && !n)) continue;
+      const s = p ? mid(p, a) : a, e = n ? mid(a, n) : a;
+      sc.strokeStyle = devColor(a[2], 1);
+      sc.lineWidth = 6.5 - 5.3 * Math.min(1, (a[1] - top) / (h - top));
+      sc.beginPath();
+      sc.moveTo(s[0], s[1]);
+      sc.quadraticCurveTo(a[0], a[1], e[0], e[1]);
+      sc.stroke();
     }
+    const fade = sc.createLinearGradient(0, top, 0, h);
+    fade.addColorStop(0, 'rgba(0,0,0,.95)');
+    fade.addColorStop(1, 'rgba(0,0,0,0)');
+    sc.globalCompositeOperation = 'destination-in';
+    sc.fillStyle = fade;
+    sc.fillRect(0, 0, w, h);
+    sc.globalCompositeOperation = 'source-over';
+    c.drawImage(snake, 0, 0, w, h);
 
     // бегунок
     if (R.needle != null) {
@@ -503,7 +553,7 @@
         c.fillText(R.needle < 0 ? '«' : '»', R.needle < 0 ? x + 16 : x - 16, top - 12);
       }
     } else {
-      c.fillStyle = 'rgba(255,240,220,.18)';
+      c.fillStyle = rgba(M.ink, .18);
       roundRect(c, cx - 2.5, top - 30, 5, 34, 2.5);
       c.fill();
     }
@@ -563,6 +613,8 @@
     press(els.instrument, S.instrument);
     press(els.notation, S.notation);
     els.sound.setAttribute('aria-pressed', String(S.sound));
+    els.theme.setAttribute('aria-pressed', String(S.theme === 'light'));
+    els.theme.title = S.theme === 'light' ? 'Тёмная тема' : 'Светлая тема';
 
     const inst = INSTRUMENTS[S.instrument];
     renderTuning();
@@ -652,6 +704,17 @@
     if (e.key === 'Escape' && !els.tuningPop.hidden) { openTuning(false); els.tuningBtn.focus({ preventScroll: true }); }
   });
   els.sound.addEventListener('click', () => { S.sound = !S.sound; saveSettings(); renderControls(); });
+  els.theme.addEventListener('click', () => {
+    S.theme = S.theme === 'light' ? 'dark' : 'light';
+    saveSettings(); applyTheme(); renderControls();
+  });
+
+  // тема: data-theme на <html> (до загрузки скриптов её ставит строчка в <head>, чтобы не мелькала тёмная)
+  function applyTheme() {
+    document.documentElement.dataset.theme = S.theme;
+    document.querySelector('meta[name="theme-color"]').content = S.theme === 'light' ? '#f3ede4' : '#0f0d0b';
+    readPalette();
+  }
   els.autoChip.addEventListener('click', () => { R.auto = true; if (R.target < 0) R.target = nextUntuned(-1); });
   els.resetBtn.addEventListener('click', () => { R.tuned = R.tuned.map(() => false); R.target = 0; R.auto = true; resetDetection(); });
 
@@ -716,6 +779,7 @@
   });
 
   // ---------- старт ----------
+  applyTheme();
   renderControls();
   setupInstrument();
   buildPiano();
