@@ -47,6 +47,8 @@
     tuning: { guitar: 'standard', bass: 'standard', ukulele: 'standard' },
     layout: { guitar: 'split', bass: 'split', ukulele: 'split' }
   };
+  // только собственные ключи: «constructor», «__proto__» из подменённого хранилища не пройдут
+  const own = (o, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
   const S = loadSettings();
 
   function loadSettings() {
@@ -56,13 +58,13 @@
       if (v && typeof v === 'object') {
         if (v.tab === 'tuner' || v.tab === 'metro') s.tab = v.tab;
         if (v.mode === 'strings' || v.mode === 'chromatic') s.mode = v.mode;
-        if (INSTRUMENTS[v.instrument]) s.instrument = v.instrument;
+        if (own(INSTRUMENTS, v.instrument)) s.instrument = v.instrument;
         if (v.notation === 'letters' || v.notation === 'solfege') s.notation = v.notation;
         if (typeof v.sound === 'boolean') s.sound = v.sound;
         if (v.theme === 'dark' || v.theme === 'light') s.theme = v.theme;
         for (const k of Object.keys(INSTRUMENTS)) {
           if (v.tuning && INSTRUMENTS[k].tunings.some(t => t.id === v.tuning[k])) s.tuning[k] = v.tuning[k];
-          if (v.layout && INSTRUMENTS[k].layouts[v.layout[k]]) s.layout[k] = v.layout[k];
+          if (v.layout && own(INSTRUMENTS[k].layouts, v.layout[k])) s.layout[k] = v.layout[k];
         }
       }
     } catch (e) { /* нет доступа к хранилищу — работаем с настройками по умолчанию */ }
@@ -859,8 +861,13 @@
       if ('wakeLock' in navigator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen');
     } catch (e) { /* не поддерживается — не страшно */ }
   }
+  // страницу свернули — микрофон отпускаем (приватность, батарея, нагрев); вернулись — одно нажатие на кнопку
   document.addEventListener('visibilitychange', () => {
-    if (R.started && document.visibilityState === 'visible') { keepAwake(); if (ctx) ctx.resume().catch(() => {}); }
+    if (document.visibilityState !== 'hidden' || !R.started) return;
+    pauseTuner();
+    els.gateNote.textContent = 'Пока страница была свёрнута, микрофон был выключен. Нажмите, чтобы продолжить.';
+    els.gateNote.classList.remove('err');
+    els.gate.hidden = false;
   });
 
   // ---------- старт ----------
